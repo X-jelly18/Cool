@@ -15,17 +15,9 @@ const proxy = httpProxy.createProxyServer({
   xfwd: true
 });
 
-// Keep alive header
-proxy.on("proxyReqWs", (proxyReq) => {
-  proxyReq.setHeader("Connection", "keep-alive");
-});
-
-// Red log when websocket opens
-proxy.on("open", () => {
-  console.log("\x1b[31m101 Kiyotaka\x1b[0m");
-});
-
-// Error handling
+// ---------------------------
+// ERROR HANDLING
+// ---------------------------
 proxy.on("error", (err, req, res: any) => {
   console.error("Proxy error:", err.message);
 
@@ -35,7 +27,9 @@ proxy.on("error", (err, req, res: any) => {
   }
 });
 
-// HTTP passthrough
+// ---------------------------
+// HTTP PASSTHROUGH
+// ---------------------------
 app.use((req, res) => {
   proxy.web(req, res, { target: TARGET }, (err) => {
     console.error("HTTP proxy error:", err.message);
@@ -46,24 +40,49 @@ app.use((req, res) => {
   });
 });
 
+// ---------------------------
+// SERVER
+// ---------------------------
 const server = http.createServer(app);
 
-// WebSocket handling
+// ---------------------------
+// MANUAL WEBSOCKET HANDSHAKE
+// ---------------------------
 server.on("upgrade", (req, socket, head) => {
-  req.headers["connection"] = "Upgrade";
+  try {
+    // Send custom status text to client
+    socket.write(
+      "HTTP/1.1 101 Kiyotaka\r\n" +
+      "Connection: Upgrade\r\n" +
+      "Upgrade: websocket\r\n" +
+      "\r\n"
+    );
 
-  proxy.ws(req, socket, head, {
-    target: TARGET
-  });
+    console.log("\x1b[31m101 Kiyotaka\x1b[0m");
+
+    // Forward to backend
+    proxy.ws(req, socket, head, {
+      target: TARGET
+    });
+
+  } catch (err: any) {
+    console.error("Upgrade error:", err.message);
+    socket.destroy();
+  }
 });
 
-// heartbeat logging
+// ---------------------------
+// HEARTBEAT LOG
+// ---------------------------
 setInterval(() => {
   server.getConnections((_, count) => {
     console.log(`Active connections: ${count}`);
   });
 }, 30000);
 
+// ---------------------------
+// START
+// ---------------------------
 server.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`SSH WS Proxy running on :${PORT} → ${TARGET}`);
 });
