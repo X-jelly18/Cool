@@ -11,40 +11,31 @@ const proxy = httpProxy.createProxyServer({
   target: TARGET,
   changeOrigin: true,
   ws: true,
-  secure: false, // http target, so false is safer
+  secure: false,
   xfwd: true
 });
 
-// ---------------------------
-// KEEP ALIVE
-// ---------------------------
+// Keep alive header
 proxy.on("proxyReqWs", (proxyReq) => {
   proxyReq.setHeader("Connection", "keep-alive");
 });
 
-// ---------------------------
-// WS OPEN EVENT
-// ---------------------------
+// Red log when websocket opens
 proxy.on("open", () => {
-  // Red colored terminal output
   console.log("\x1b[31m101 Kiyotaka\x1b[0m");
 });
 
-// ---------------------------
-// ERROR HANDLING
-// ---------------------------
-proxy.on("error", (err, req, res) => {
+// Error handling
+proxy.on("error", (err, req, res: any) => {
   console.error("Proxy error:", err.message);
 
-  if (res && "writeHead" in res && !res.headersSent) {
+  if (res && !res.headersSent) {
     res.writeHead(502, { "Content-Type": "text/plain" });
     res.end("Bad Gateway");
   }
 });
 
-// ---------------------------
-// HTTP PASSTHROUGH
-// ---------------------------
+// HTTP passthrough
 app.use((req, res) => {
   proxy.web(req, res, { target: TARGET }, (err) => {
     console.error("HTTP proxy error:", err.message);
@@ -55,37 +46,24 @@ app.use((req, res) => {
   });
 });
 
-// ---------------------------
-// CREATE RAW SERVER
-// ---------------------------
 const server = http.createServer(app);
 
-// ---------------------------
-// WEB SOCKET HANDLING
-// ---------------------------
+// WebSocket handling
 server.on("upgrade", (req, socket, head) => {
   req.headers["connection"] = "Upgrade";
-
-  socket.setKeepAlive(true, 30000);
-  socket.setTimeout(0);
 
   proxy.ws(req, socket, head, {
     target: TARGET
   });
 });
 
-// ---------------------------
-// HEARTBEAT LOGGING
-// ---------------------------
+// heartbeat logging
 setInterval(() => {
   server.getConnections((_, count) => {
     console.log(`Active connections: ${count}`);
   });
 }, 30000);
 
-// ---------------------------
-// START SERVER
-// ---------------------------
 server.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`SSH WS Proxy running on :${PORT} → ${TARGET}`);
 });
